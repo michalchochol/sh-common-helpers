@@ -1,31 +1,56 @@
 package rethinkdb
 
 import (
-	// "encoding/json"
-
 	"fmt"
 	"log"
-	"time"
+	// "time"
 
-	// s "github.com/michalchochol/sh-data-model/state"
-	// "./state"
+	// e "github.com/michalchochol/sh-common-helpers/error"
+
 	r "gopkg.in/rethinkdb/rethinkdb-go.v6"
 )
 
+type RethinkDBHelper struct {
+	session *r.Session
+}
+
 // Inicjalizacja połączenia z bazą danych RethinkDB
-func InitRethinkDB() *r.Session {
-	session, err := r.Connect(r.ConnectOpts{
+func (rh *RethinkDBHelper) Init() *r.Session {
+	var err error
+	rh.session, err = r.Connect(r.ConnectOpts{
 		Address:  "localhost:30815", // Zmień na odpowiedni adres RethinkDB
 		Database: "sh_state",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	return session
+	return rh.session
 }
 
-func StoreObject(topic string, object interface{}) {
+func (rh *RethinkDBHelper) StoreObject(table string, object interface{}) {
+	_, err := r.Table(table).Insert(object, r.InsertOpts{Conflict: "update"}).Run(rh.session)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Stored object: %v\n", object)
+}
 
+func (rh *RethinkDBHelper) GetObject(table string, objectId string) interface{} {
+	object, err := r.Table(table).Get(objectId).Run(rh.session)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Read object: %v\n", object)
+	return object
+}
+
+func (rh *RethinkDBHelper) StoreObjectIfNotExists(table string, object interface{}) {
+	_, err := r.Table(table).Insert(object, r.InsertOpts{Conflict: "error"}).Run(rh.session)
+	if err != nil {
+		log.Fatal(err)
+	} else {
+		fmt.Printf("Stored object: %v\n", object)
+	}
 }
 
 // Funkcja zapisująca stan do bazy danych RethinkDB
