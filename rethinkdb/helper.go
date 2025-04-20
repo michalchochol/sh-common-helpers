@@ -1,9 +1,8 @@
 package rethinkdb
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
-	// "time"
 
 	// e "github.com/michalchochol/sh-common-helpers/error"
 
@@ -32,7 +31,7 @@ func (rh *RethinkDBHelper) StoreObject(table string, object interface{}) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Stored object: %v\n", object)
+	log.Printf("Stored object: %v\n", object)
 }
 
 func (rh *RethinkDBHelper) GetObject(table string, objectId string) interface{} {
@@ -40,7 +39,7 @@ func (rh *RethinkDBHelper) GetObject(table string, objectId string) interface{} 
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Read object: %v\n", object)
+	log.Printf("Read object: %v\n", object)
 	return object
 }
 
@@ -49,60 +48,39 @@ func (rh *RethinkDBHelper) StoreObjectIfNotExists(table string, object interface
 	if err != nil {
 		log.Fatal(err)
 	} else {
-		fmt.Printf("Stored object: %v\n", object)
+		log.Printf("Stored object: %v\n", object)
 	}
 }
 
-// Funkcja zapisująca stan do bazy danych RethinkDB
-// func StoreState(session *r.Session, state s.State, stateName string) {
+func (rh *RethinkDBHelper) SubscribeToChanges(table string, handler func([]byte, []byte)) {
 
-// 	// jsonData, err := json.Marshal(state)
-// 	// if err != nil {
-// 	// 	fmt.Println("Error:", err)
-// 	// 	return
-// 	// }
+	cursor, err := r.Table(table).Changes().Run(rh.session)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cursor.Close()
 
-// 	timestamp := time.Now()
-// 	// _, err := r.Table("states").Insert(map[string]interface{}{
-// 	_, err := r.Table("states").Get(stateName).Update(map[string]interface{}{
-// 		"id": stateName,
-// 		// "name":  stateName,
-// 		"state": state,
-// 		// "state":     string(jsonData),
-// 		"timestamp": timestamp,
-// 	}).Run(session)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	fmt.Printf("Stored state: %v\n", stateName)
-// }
+	var change r.ChangeResponse
 
-// Funkcja subskrybująca zmiany w tabeli RethinkDB
-// func SubscribeToChanges(session *r.Session, handleStateChange func(s.State)) {
-// Zaczynamy nasłuchiwać zmian w tabeli 'states'
-// cursor, err := r.Table("states").Changes().Run(session)
-// if err != nil {
-// 	log.Fatal(err)
-// }
-// defer cursor.Close()
+	for cursor.Next(&change) {
+		if change.NewValue != nil && change.OldValue != nil {
+			log.Printf("Change detected: %+v\n", change)
 
-// for cursor.Next() {
-// 	var change r.ChangeResponse
-// 	if err := cursor.Scan(&change); err != nil {
-// 		log.Fatal(err)
-// 	}
+			oldJsonBytes, err := json.Marshal(change.OldValue)
+			if err != nil {
+				log.Println("Error marshalling new_val:", err)
+				return
+			}
+			newJsonBytes, err := json.Marshal(change.NewValue)
+			if err != nil {
+				log.Println("Error marshalling new_val:", err)
+				return
+			}
 
-// 	if change.NewValue != nil && change.OldValue != nil {
-// 		var newState State
-// 		err := json.Unmarshal([]byte(change.NewValue.(string)), &newState)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 		// Obsługuje logikę na podstawie zmienionego stanu
-// 		handleStateChange(newState)
-// 	}
-// }
-// if cursor.Err() != nil {
-// 	log.Fatal(cursor.Err())
-// }
-// }
+			handler(oldJsonBytes, newJsonBytes)
+		}
+	}
+	if cursor.Err() != nil {
+		log.Fatal(cursor.Err())
+	}
+}
